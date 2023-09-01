@@ -105,9 +105,12 @@ impl FileCollector {
         let beauty = "*-*------------------*-*";
         if !self.all_files.is_empty() {println!("{}", beauty); }
         for entry in &self.all_files {
-            let file = std::fs::File::open(entry.path().clone())?;
-            println!("{:?}, {:?}, {}",entry.file_name(), entry.file_type().unwrap(), entry.path().to_string_lossy());
-            println!("{:?}", format_rfc3339_seconds(entry.metadata().unwrap().created().unwrap()).to_string());
+            let file = std::fs::File::open(entry.path().clone()).unwrap();
+            let mut bufreader = std::io::BufReader::new(file);
+            let exifreader = exif::Reader::new();
+            let exif = exifreader.read_from_container(&mut bufreader);
+            println!("{:?}, {}",entry.file_name(), exif.unwrap().get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).unwrap().display_value());
+            // println!("{:?}", format_rfc3339_seconds(entry.metadata().unwrap().created().unwrap()).to_string());
             println!("{}", beauty);
         }
 
@@ -116,7 +119,7 @@ impl FileCollector {
 }
 
 #[allow(dead_code)]
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let mut collector_jpg = FileCollector{
         all_files: Vec::new(),
         similar_files: None,
@@ -134,17 +137,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("No valid directory selected.");
     }
-    // collector_jpg.print_collection();
-    let path = collector_jpg.all_files.first().unwrap().path();
-    let file = std::fs::File::open(path.clone())?;
-    let mut bufreader = std::io::BufReader::new(&file);
-    let exifreader = exif::Reader::new();
-    let exif = exifreader.read_from_container(&mut bufreader)?;
-    println!("{}, {}", path.file_name().unwrap().to_str().unwrap(), exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).unwrap().display_value());
-    for f in exif.fields() {
-        println!("{} {} {}",
-                 f.tag, f.ifd_num, f.display_value().with_unit(&exif));
-    }
-
-    Ok(())
+    collector_jpg.print_collection();
 }
