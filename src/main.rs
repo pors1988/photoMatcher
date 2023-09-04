@@ -1,6 +1,5 @@
 use std::{path::Path, io, collections::HashMap, fs::DirEntry};
-use chrono::DateTime;
-use std::time::Duration;
+use chrono::{DateTime, NaiveDateTime, Duration};
 use humantime::{format_duration, format_rfc3339, format_rfc3339_seconds};
 
 fn read_line() -> io::Result<String> {
@@ -87,17 +86,39 @@ impl FileType {
 #[allow(dead_code)]
 struct FileCollector {
     all_files: Vec<DirEntry>,
-    similar_files: Option<HashMap<chrono::NaiveTime, Vec<DirEntry>>>,
+    similar_files: Option<HashMap<chrono::NaiveDateTime, Vec<DirEntry>>>,
     file_type: Option<FileType>,
+    time_threshold: chrono::Duration,
+
 }
 
 #[allow(dead_code)]
 impl FileCollector {
+    fn new(time_threshold: chrono::Duration) -> Self {
+        FileCollector{
+            all_files: Vec::new(),
+            similar_files: None,
+            file_type: Some(FileType::JPG),
+            time_threshold,
+        }
+    }
+
     fn filter_by_type(&self) {
     }
 
     fn collect_similar_files(&self) {
 
+
+    }
+
+    fn get_entry_created_date_time(&self, dir_entry: &DirEntry) -> Option<NaiveDateTime> {
+        let file = std::fs::File::open(dir_entry.path().clone()).unwrap();
+        let mut bufreader = std::io::BufReader::new(file);
+        let exifreader = exif::Reader::new();
+        let exif = exifreader.read_from_container(&mut bufreader);
+        let orginal_time  = exif.unwrap().get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).unwrap().clone().display_value().to_string();
+        let date_time = NaiveDateTime::parse_from_str(&orginal_time, "%Y-%m-%d %H:%M:%S").unwrap();
+        Some(date_time)
     }
 
     fn print_collection(&self) {
@@ -105,12 +126,9 @@ impl FileCollector {
         let beauty = "*-*------------------*-*";
         if !self.all_files.is_empty() {println!("{}", beauty); }
         for entry in &self.all_files {
-            let file = std::fs::File::open(entry.path().clone()).unwrap();
-            let mut bufreader = std::io::BufReader::new(file);
-            let exifreader = exif::Reader::new();
-            let exif = exifreader.read_from_container(&mut bufreader);
-            println!("{:?}, {}",entry.file_name(), exif.unwrap().get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).unwrap().display_value());
-            // println!("{:?}", format_rfc3339_seconds(entry.metadata().unwrap().created().unwrap()).to_string());
+            let date_time = self.get_entry_created_date_time(entry);
+
+            println!("{:?}, {:?}",entry.file_name(), date_time.unwrap());
             println!("{}", beauty);
         }
 
@@ -120,11 +138,7 @@ impl FileCollector {
 
 #[allow(dead_code)]
 fn main() {
-    let mut collector_jpg = FileCollector{
-        all_files: Vec::new(),
-        similar_files: None,
-        file_type: Some(FileType::JPG),
-    };
+    let mut collector_jpg = FileCollector::new(chrono::Duration::seconds(120));
 
     if let Some(directory) = select_directory() {
         println!("Selected directory: {}", directory);
