@@ -1,6 +1,5 @@
 use std::{path::Path, io, collections::HashMap, fs::DirEntry};
-use chrono::{DateTime, NaiveDateTime, Duration};
-use humantime::{format_duration, format_rfc3339, format_rfc3339_seconds};
+use chrono::{NaiveDateTime};
 
 fn read_line() -> io::Result<String> {
     let mut input = String::new();
@@ -84,9 +83,9 @@ impl FileType {
 //     path: DirEntry,
 // }
 #[allow(dead_code)]
-struct FileCollector {
+struct FileCollector{
     all_files: Vec<DirEntry>,
-    similar_files: Option<HashMap<chrono::NaiveDateTime, Vec<DirEntry>>>,
+    similar_files: Option<HashMap<chrono::NaiveDateTime, Vec<std::path::PathBuf>>>,
     file_type: Option<FileType>,
     time_threshold: chrono::Duration,
 
@@ -106,8 +105,38 @@ impl FileCollector {
     fn filter_by_type(&self) {
     }
 
-    fn collect_similar_files(&self) {
+    fn collect_similar_files(&mut self) {
+        if self.all_files.is_empty() {
+            return;
+        }
+        let dir_entry = self.all_files.first().unwrap();
+        let first_path = self.all_files.first().unwrap().path();
+        let previous_created_date_time = self.get_entry_created_date_time(&dir_entry).unwrap(); 
 
+        if let Some(similar_files) = &mut self.similar_files {
+            similar_files
+                .entry(previous_created_date_time)
+                .or_insert_with(Vec::new)
+                .push(first_path);
+        }
+        else {
+            let mut new_map = HashMap::new();
+            let mut new_paths = Vec::new();
+            new_paths.push(first_path);
+            new_map.insert(previous_created_date_time, new_paths);
+            self.similar_files = Some(new_map);
+
+        }
+
+
+        let mut it = self.all_files.iter().skip(1);
+        while let Some(entry) = it.next() {
+           println!("{:?}", entry); 
+        //    if let Some(recent_created_date_time) = self.get_entry_created_date_time(entry) {
+
+        //    }
+           break;
+        }
 
     }
 
@@ -152,4 +181,6 @@ fn main() {
         println!("No valid directory selected.");
     }
     collector_jpg.print_collection();
+
+    collector_jpg.collect_similar_files();
 }
