@@ -1,4 +1,5 @@
-use std::{path::Path, io, collections::HashMap, fs::DirEntry};
+use std::{path::Path, io, collections::HashMap};
+use std::path::PathBuf;
 use chrono::{NaiveDateTime};
 
 fn read_line() -> io::Result<String> {
@@ -74,17 +75,13 @@ impl FileType {
     fn as_str(&self) -> &str {
         match self {
             FileType::JPG => "jpg",
-            FileType::PNG => "png",            
+            FileType::PNG => "png",
         }
     }
 }
-// struct FileData {
-//     date_time: DateTime<chrono::Utc>,
-//     path: DirEntry,
-// }
 #[allow(dead_code)]
 struct FileCollector{
-    all_files: Vec<DirEntry>,
+    all_files: Vec<std::path::PathBuf>,
     similar_files: Option<HashMap<chrono::NaiveDateTime, Vec<std::path::PathBuf>>>,
     file_type: Option<FileType>,
     time_threshold: chrono::Duration,
@@ -102,51 +99,62 @@ impl FileCollector {
         }
     }
 
-    fn filter_by_type(&self) {
-    }
-
     fn collect_similar_files(&mut self) {
         if self.all_files.is_empty() {
             return;
         }
-        let dir_entry = self.all_files.first().unwrap();
-        let first_path = self.all_files.first().unwrap().path();
-        let previous_created_date_time = self.get_entry_created_date_time(&dir_entry).unwrap(); 
 
-        if let Some(similar_files) = &mut self.similar_files {
+        let add_similar_file_entry = |similar_files: &mut Option<HashMap<chrono::NaiveDateTime,
+                                            Vec<std::path::PathBuf>>>,
+                                            created_date_time, first_path: Option<&PathBuf>| {
             similar_files
-                .entry(previous_created_date_time)
+                .get_or_insert_with(|| {
+                    let mut new_map = HashMap::new();
+                    new_map.insert(created_date_time, Vec::new());
+                    new_map
+                })
+                .entry(created_date_time)
                 .or_insert_with(Vec::new)
-                .push(first_path);
+                .push(first_path.unwrap().clone());
+        };
+
+        let mut prev_entry = None;
+
+        let all_files_copy = self.all_files.clone();
+        let mut i = 0;
+        for entry in &all_files_copy {
+            i=i+1;
+        // while let Some(entry) = it.next() {
+            if prev_entry.is_none() {
+                println!("{:?}", entry);
+                let cdt = self.get_entry_created_date_time(entry).unwrap();
+                let path = Some(entry);
+                add_similar_file_entry(&mut self.similar_files, cdt, path);
+            }
+           else if let Some(recent_created_date_time) = self.get_entry_created_date_time(entry) {
+                if let Some(previous_created_date_time) = self.get_entry_created_date_time(prev_entry.unwrap()) {
+                    let time_diff = recent_created_date_time.timestamp() - previous_created_date_time.timestamp();
+                    let key = if time_diff < self.time_threshold.num_seconds() {previous_created_date_time} else {recent_created_date_time};
+                    add_similar_file_entry(&mut self.similar_files,key, Some(entry));
+            }
+           }
+            prev_entry = Some(entry);
         }
-        else {
-            let mut new_map = HashMap::new();
-            let mut new_paths = Vec::new();
-            new_paths.push(first_path);
-            new_map.insert(previous_created_date_time, new_paths);
-            self.similar_files = Some(new_map);
+        println!("What we got in similar files:");
+        for (key, value) in self.similar_files.clone().unwrap().iter() {
+
+            println!("{}: {:?}", key, value);
 
         }
-
-
-        let mut it = self.all_files.iter().skip(1);
-        while let Some(entry) = it.next() {
-           println!("{:?}", entry); 
-        //    if let Some(recent_created_date_time) = self.get_entry_created_date_time(entry) {
-
-        //    }
-           break;
-        }
-
     }
 
-    fn get_entry_created_date_time(&self, dir_entry: &DirEntry) -> Option<NaiveDateTime> {
-        let file = std::fs::File::open(dir_entry.path().clone()).unwrap();
+    fn get_entry_created_date_time(&self, dir_entry: &std::path::PathBuf) -> Option<NaiveDateTime> {
+        let file = std::fs::File::open(dir_entry.clone()).unwrap();
         let mut bufreader = std::io::BufReader::new(file);
         let exifreader = exif::Reader::new();
         let exif = exifreader.read_from_container(&mut bufreader);
-        let orginal_time  = exif.unwrap().get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).unwrap().clone().display_value().to_string();
-        let date_time = NaiveDateTime::parse_from_str(&orginal_time, "%Y-%m-%d %H:%M:%S").unwrap();
+        let original_time = exif.unwrap().get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).unwrap().clone().display_value().to_string();
+        let date_time = NaiveDateTime::parse_from_str(&original_time, "%Y-%m-%d %H:%M:%S").unwrap();
         Some(date_time)
     }
 
@@ -174,13 +182,13 @@ fn main() {
         let path = Path::new(&directory);
         for entry in path.read_dir().expect("read_dir call failed") {
             if let Ok(entry) = entry {
-                collector_jpg.all_files.push(entry);
+                collector_jpg.all_files.push(entry.path());
             }
         }
     } else {
         println!("No valid directory selected.");
     }
-    collector_jpg.print_collection();
+    // collector_jpg.print_collection();
 
     collector_jpg.collect_similar_files();
 }
